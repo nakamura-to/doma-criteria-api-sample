@@ -1,0 +1,103 @@
+buildscript {
+    ext.domaVersion = '2.36.0'
+    ext.postgresqlVersion = '42.2.12'
+    repositories {
+        mavenCentral()
+        maven { url "https://plugins.gradle.org/m2/" }
+    }
+    dependencies {
+        classpath 'com.diffplug.gradle:goomph:3.22.0'
+        classpath 'com.diffplug.spotless:spotless-plugin-gradle:4.0.1'
+        classpath 'gradle.plugin.org.seasar.doma:codegen:1.1.0'
+        classpath 'gradle.plugin.org.seasar.doma:compile:1.0.0'
+        classpath "org.postgresql:postgresql:$postgresqlVersion"
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'application'
+apply plugin: 'com.diffplug.eclipse.apt'
+apply plugin: 'com.diffplug.gradle.spotless'
+apply plugin: 'org.seasar.doma.compile'
+apply plugin: 'org.seasar.doma.codegen'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    annotationProcessor "org.seasar.doma:doma-processor:$domaVersion"
+    implementation "org.seasar.doma:doma-core:$domaVersion"
+    implementation "org.postgresql:postgresql:$postgresqlVersion"
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.6.2'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+test {
+    useJUnitPlatform()
+}
+
+eclipse {
+    classpath {
+        file {
+            whenMerged { classpath ->
+                classpath.entries.removeAll { it.path == '.apt_generated' }
+            }
+            withXml { provider ->
+                def node = provider.asNode()
+                // specify output path for .apt_generated
+                node.appendNode('classpathentry', [kind: 'src', output: 'bin/main', path: '.apt_generated'])
+            }
+        }
+    }
+    jdt {
+        javaRuntimeName = 'JavaSE-1.8'
+    }
+}
+
+spotless {
+    java {
+        googleJavaFormat('1.7')
+    }
+}
+
+compileJava {
+    dependsOn("spotlessApply")
+}
+
+application {
+    mainClassName = 'sample.App'
+}
+
+def jdbcUrl = 'jdbc:postgresql://127.0.0.1:5432/sample'
+def jdbcUser = 'postgres'
+def jdbcPassword = ''
+def basePackage = 'sample'
+def entityPackage = "${basePackage}.entity"
+
+run {
+    args = [jdbcUrl, jdbcUser, jdbcPassword]
+}
+
+domaCodeGen {
+    dev {
+        url = jdbcUrl
+        user = jdbcUser
+        password = jdbcPassword
+        entity {
+            packageName = entityPackage
+            generationType = org.seasar.doma.gradle.codegen.desc.GenerationType.SEQUENCE
+        }
+    }
+}
+
+task deleteGeneratedCode {
+    doLast {
+        delete "$projectDir/src/main/java/${entityPackage.replace('.', '/')}"
+    }
+}
